@@ -1,0 +1,91 @@
+name: "Build and Release"
+
+on:
+  push:
+    tags:
+      - '0.1.0'  # Déclenchement sur les tags SemVer
+  pull_request:
+    branches: [ main, recette, develop ]
+  schedule:
+    - cron: '0 0 * * *'  # Toutes les nuits à minuit
+  workflow_dispatch:  # Déclenchement manuel via l'interface GitHub
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Check .NET version
+        run: dotnet --version
+
+      - name: Check runner ID
+        run: echo "Runner ID: ${{ github.run_id }}"
+
+  analyze:
+    name: analyze
+    needs: verify  # job depend du job 'verify'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'csharp' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v1
+        with:
+          languages: ${{ matrix.language }}
+          config-file: .github/workflows/codeql/codeql-config.yml
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v1
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v1
+
+  ci:
+    name: CI
+    needs: analyze  # Ce job dépend du job 'analyze'
+    runs-on: ubuntu-latest
+    if: ${{ success() }}  # Exécute ce job seulement si le job 'analyze' réussit
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Build
+        run: dotnet build
+
+      - name: Test
+        run: dotnet test
+
+      - name: Package
+        run: dotnet pack
+
+  release:
+    name: Release
+    needs: ci  # depend du job 'ci'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Create Release
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            gh release create ${{ github.ref_name }} --draft --title "Draft Release" --notes "Draft release for develop branch"
+          elif [[ "${{ github.ref }}" == "refs/heads/recette" ]]; then
+            gh release create ${{ github.ref_name }} --prerelease --title "Prerelease" --notes "Prerelease for recette branch"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            gh release create ${{ github.ref_name }} --title "Release" --notes "Release for main branch"
+          fi
