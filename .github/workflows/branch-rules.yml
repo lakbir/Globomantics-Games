@@ -1,0 +1,13 @@
+name: Branch Rules
+
+on:
+  workflow_dispatch:  # Déclenchement manuel via l'interface GitHub
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - recette
+      - main
+  schedule:
+    - cron: '0 0 * * *'  # Toutes les nuits à minuit
